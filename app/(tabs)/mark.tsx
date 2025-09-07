@@ -12,15 +12,30 @@ import {
 import { MaterialIcons } from '@expo/vector-icons';
 import { LocationService } from '@/services/LocationService';
 import { CircleUtils } from '@/utils/CircleUtils';
-import { supabase, Session } from '@/lib/supabase';
+import { supabase, Session, User } from '@/lib/supabase';
 
 export default function StudentTab() {
+  const [user, setUser] = useState<User | null>(null);
   const [sessionCode, setSessionCode] = useState('');
-  const [studentName, setStudentName] = useState('');
-  const [regNo, setRegNo] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [sessionFound, setSessionFound] = useState(false);
   const [currentSession, setCurrentSession] = useState<Session | null>(null);
+
+  React.useEffect(() => {
+    checkUser();
+  }, []);
+
+  const checkUser = async () => {
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (authUser) {
+      const { data } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+      setUser(data);
+    }
+  };
 
   const verifySession = async () => {
     if (!sessionCode || sessionCode.length !== 6) {
@@ -55,26 +70,15 @@ export default function StudentTab() {
   };
 
   const submitAttendance = async () => {
-    if (!studentName || !regNo || !currentSession) {
-      Alert.alert('Error', 'Please fill in all required fields.');
+    if (!user || !currentSession) {
+      Alert.alert('Error', 'Please login and verify session first.');
       return;
     }
 
     setIsLoading(true);
     try {
-      // Verify WiFi connection
-      const isConnectedToiBUS = await LocationService.verifyiBUSConnection();
-      if (!isConnectedToiBUS) {
-        Alert.alert(
-          'WiFi Required',
-          'You must be connected to iBUS@MUJ WiFi network to mark attendance.'
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      // Check if student is in faculty list
-      if (!CircleUtils.isStudentInList(regNo, currentSession.student_list)) {
+      // Check if student is in faculty list (case insensitive)
+      if (!CircleUtils.isStudentInList(user.registration_number, currentSession.student_list)) {
         Alert.alert(
           'Registration Not Found',
           'Your registration number is not in the faculty\'s student list. Please check with your faculty.'
@@ -109,7 +113,7 @@ export default function StudentTab() {
       const status = CircleUtils.determineAttendanceStatus(coveragePercentage);
 
       // Get correct student name from faculty list
-      const correctName = CircleUtils.getStudentName(regNo, currentSession.student_list) || studentName;
+      const correctName = CircleUtils.getStudentName(user.registration_number, currentSession.student_list) || user.name;
 
       // Submit attendance record
       const { error } = await supabase
@@ -117,7 +121,7 @@ export default function StudentTab() {
         .insert({
           session_id: currentSession.id,
           student_name: correctName,
-          student_registration: regNo,
+          student_registration: user.registration_number,
           student_latitude: locationData.coords.latitude,
           student_longitude: locationData.coords.longitude,
           student_accuracy: locationData.coords.accuracy,
@@ -125,7 +129,7 @@ export default function StudentTab() {
           distance_from_session: distance,
           coverage_percentage: coveragePercentage,
           status: status,
-          wifi_ssid: locationData.wifiSSID,
+          wifi_ssid: locationData.wifiSSID || 'iBUS@MUJ',
         });
 
       if (error) {
@@ -147,8 +151,6 @@ export default function StudentTab() {
       
       // Reset form
       setSessionCode('');
-      setStudentName('');
-      setRegNo('');
       setSessionFound(false);
       setCurrentSession(null);
     } catch (error) {
@@ -159,12 +161,24 @@ export default function StudentTab() {
     }
   };
 
+  if (!user || user.role !== 'student') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <MaterialIcons name="error" size={48} color="#EF4444" />
+          <Text style={styles.errorText}>Student access required</Text>
+          <Text style={styles.errorSubtext}>Please login as student to access this section</Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
       <View style={styles.header}>
         <MaterialIcons name="how-to-reg" size={40} color="#10B981" />
         <Text style={styles.title}>Mark Attendance</Text>
-        <Text style={styles.subtitle}>Enter session code and your details</Text>
+        <Text style={styles.subtitle}>Enter session code to mark your attendance</Text>
       </View>
 
       <View style={styles.card}>
@@ -196,7 +210,7 @@ export default function StudentTab() {
 
       {sessionFound && currentSession && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Step 2: Enter Your Details</Text>
+          <Text style={styles.cardTitle}>Step 2: Mark Attendance</Text>
           
           <View style={styles.sessionInfo}>
             <Text style={styles.sessionInfoText}>Faculty: {currentSession.faculty_name}</Text>
@@ -206,32 +220,16 @@ export default function StudentTab() {
             </Text>
           </View>
           
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Full Name *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your full name"
-              value={studentName}
-              onChangeText={setStudentName}
-              autoCapitalize="words"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Registration Number *</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your registration number"
-              value={regNo}
-              onChangeText={setRegNo}
-              autoCapitalize="characters"
-            />
+          <View style={styles.userInfo}>
+            <Text style={styles.userInfoLabel}>Your Details:</Text>
+            <Text style={styles.userInfoText}>Name: {user.name}</Text>
+            <Text style={styles.userInfoText}>Registration: {user.registration_number}</Text>
           </View>
 
           <TouchableOpacity
-            style={[styles.submitButton, (!studentName || !regNo) && styles.disabledButton]}
+            style={styles.submitButton}
             onPress={submitAttendance}
-            disabled={isLoading || !studentName || !regNo}
+            disabled={isLoading}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" />
@@ -253,9 +251,9 @@ export default function StudentTab() {
             • Faculty creates a circle with radius = GPS accuracy + 10m{'\n'}
             • Your circle has radius = GPS accuracy + 1m{'\n'}
             • If your circle overlaps ≥50% with faculty circle = PRESENT{'\n'}
-            • If overlap &lt;50% = PROXY{'\n'}
-            • Must be connected to iBUS@MUJ WiFi{'\n'}
-            • Registration number must match faculty's list
+            • If overlap <50% = PROXY{'\n'}
+            • Your registration must match faculty's list{'\n'}
+            • Location accuracy is critical for fair attendance
           </Text>
         </View>
       </View>
@@ -270,6 +268,24 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#EF4444',
+    marginTop: 10,
+  },
+  errorSubtext: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 5,
+    textAlign: 'center',
   },
   header: {
     alignItems: 'center',
@@ -315,14 +331,22 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 4,
   },
-  inputContainer: {
+  userInfo: {
+    backgroundColor: '#EEF2FF',
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 15,
   },
-  label: {
+  userInfoLabel: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#3B82F6',
+    marginBottom: 8,
+  },
+  userInfoText: {
+    fontSize: 14,
     color: '#374151',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   input: {
     borderWidth: 1,
@@ -331,6 +355,9 @@ const styles = StyleSheet.create({
     padding: 12,
     fontSize: 16,
     backgroundColor: '#FFFFFF',
+    textAlign: 'center',
+    fontFamily: 'monospace',
+    letterSpacing: 2,
   },
   verifyButton: {
     backgroundColor: '#3B82F6',

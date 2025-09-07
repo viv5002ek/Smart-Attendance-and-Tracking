@@ -278,16 +278,6 @@ export default function ProfileTab() {
           <Text style={styles.editButtonText}>Edit Profile</Text>
         </TouchableOpacity>
       </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>App Information</Text>
-        <Text style={styles.appInfo}>
-          Smart Attendance App v1.0.0{'\n'}
-          Circle-based location detection{'\n'}
-          Requires iBUS@MUJ WiFi connection{'\n'}
-          Built with Expo & Supabase
-        </Text>
-      </View>
     </ScrollView>
   );
 }
@@ -466,10 +456,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
-  },
-  appInfo: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
   },
 });

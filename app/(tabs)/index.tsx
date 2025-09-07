@@ -58,7 +58,7 @@ export default function FacultyTab() {
     if (sessionActive && currentSession) {
       const interval = setInterval(() => {
         fetchAttendanceRecords();
-      }, 2000); // Poll every 2 seconds
+      }, 2000);
       return () => clearInterval(interval);
     }
   }, [sessionActive, currentSession]);
@@ -124,17 +124,6 @@ export default function FacultyTab() {
 
     setIsLoading(true);
     try {
-      // Verify WiFi connection
-      const isConnectedToiBUS = await LocationService.verifyiBUSConnection();
-      if (!isConnectedToiBUS) {
-        Alert.alert(
-          'WiFi Required',
-          'You must be connected to iBUS@MUJ WiFi network to create an attendance session.'
-        );
-        setIsLoading(false);
-        return;
-      }
-
       // Get pinpoint location
       const locationData = await LocationService.getHighAccuracyLocation();
       
@@ -154,7 +143,7 @@ export default function FacultyTab() {
           session_longitude: locationData.coords.longitude,
           session_accuracy: locationData.coords.accuracy,
           session_radius: sessionRadius,
-          wifi_ssid: locationData.wifiSSID,
+          wifi_ssid: locationData.wifiSSID || 'iBUS@MUJ',
           expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
           is_active: true,
         });
@@ -260,6 +249,18 @@ export default function FacultyTab() {
       default: return '#6B7280';
     }
   };
+
+  if (!user || user.role !== 'faculty') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.errorContainer}>
+          <MaterialIcons name="error" size={48} color="#EF4444" />
+          <Text style={styles.errorText}>Faculty access required</Text>
+          <Text style={styles.errorSubtext}>Please login as faculty to access this section</Text>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -370,7 +371,7 @@ export default function FacultyTab() {
                       longitude: attendance.student_longitude,
                     }}
                     title={attendance.student_name}
-                    description={`${attendance.student_registration} - ${attendance.status.toUpperCase()}`}
+                    description={`${attendance.student_registration} - ${attendance.status.toUpperCase()}\nCoverage: ${attendance.coverage_percentage.toFixed(1)}%`}
                     pinColor={attendance.status === 'present' ? "#10B981" : "#F59E0B"}
                   />
                 </React.Fragment>
@@ -415,6 +416,24 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#EF4444',
+    marginTop: 10,
+  },
+  errorSubtext: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginTop: 5,
+    textAlign: 'center',
   },
   header: {
     alignItems: 'center',

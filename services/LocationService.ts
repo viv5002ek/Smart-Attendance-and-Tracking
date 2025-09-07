@@ -18,10 +18,6 @@ interface LocationData {
   source: string;
 }
 
-// For production use, consider adding these environment variables
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'your_google_api_key_here';
-const INDOOR_POSITIONING_API_URL = process.env.INDOOR_POSITIONING_URL || 'https://your-indoor-positioning-api.com';
-
 export class LocationService {
   static async getHighAccuracyLocation(): Promise<LocationData> {
     try {
@@ -49,61 +45,10 @@ export class LocationService {
         }
       } catch (error) {
         console.warn('WiFi SSID detection failed:', error);
-        throw new Error('Unable to detect WiFi network. Please ensure WiFi is enabled and you are connected to iBUS@MUJ.');
+        // Don't throw error for WiFi, just continue without it
       }
 
-      // 4. Verify campus WiFi connection
-      if (!wifiSSID || wifiSSID !== 'iBUS@MUJ') {
-        throw new Error(`You must be connected to iBUS@MUJ WiFi network. Currently connected to: ${wifiSSID || 'No WiFi'}`);
-      }
-
-      // 5. Try multiple location methods and use the most accurate one
-      const locationMethods = [
-        this.getGoogleFusedLocation(),
-        this.getHighAccuracyGPSLocation(),
-        this.getNetworkBasedLocation(),
-        this.getIndoorPositioningLocation(wifiSSID)
-      ];
-
-      // Race to get the best location with timeout
-      const timeoutPromise = new Promise<never>((_, reject) => 
-        setTimeout(() => reject(new Error('Location timeout')), 20000)
-      );
-
-      const results = await Promise.allSettled([...locationMethods, timeoutPromise]);
-      
-      // Filter successful results and find the most accurate
-      const successfulResults = results
-        .filter(result => result.status === 'fulfilled')
-        .map(result => (result as PromiseFulfilledResult<LocationData>).value);
-      
-      if (successfulResults.length === 0) {
-        throw new Error('All location methods failed. Please ensure you have a stable connection and try again.');
-      }
-      
-      // Sort by accuracy (lowest number is best)
-      successfulResults.sort((a, b) => a.coords.accuracy - b.coords.accuracy);
-      
-      return successfulResults[0];
-    } catch (error) {
-      console.error('Location service error:', error);
-      throw error;
-    }
-  }
-
-  // High accuracy GPS method
-  private static async getHighAccuracyGPSLocation(): Promise<LocationData> {
-    try {
-      let wifiSSID: string | null = null;
-      try {
-        const netInfo = await NetInfo.fetch();
-        if (netInfo.type === 'wifi' && netInfo.details && 'ssid' in netInfo.details) {
-          wifiSSID = netInfo.details.ssid;
-        }
-      } catch (error) {
-        console.warn('WiFi SSID detection failed in GPS method:', error);
-      }
-
+      // 4. Get high accuracy location with multiple attempts
       const locationOptions: Location.LocationOptions = {
         accuracy: Location.Accuracy.BestForNavigation,
         timeout: 15000,
@@ -159,190 +104,7 @@ export class LocationService {
         source: 'GPS'
       };
     } catch (error) {
-      console.error('High accuracy GPS failed:', error);
-      throw error;
-    }
-  }
-
-  // Google's Fused Location Provider (Android only)
-  private static async getGoogleFusedLocation(): Promise<LocationData> {
-    if (Platform.OS !== 'android') {
-      throw new Error('Google Fused Location only available on Android');
-    }
-
-    try {
-      let wifiSSID: string | null = null;
-      try {
-        const netInfo = await NetInfo.fetch();
-        if (netInfo.type === 'wifi' && netInfo.details && 'ssid' in netInfo.details) {
-          wifiSSID = netInfo.details.ssid;
-        }
-      } catch (error) {
-        console.warn('WiFi SSID detection failed in Google method:', error);
-      }
-
-      // Use Expo's built-in method which on Android uses Fused Location Provider
-      const locationOptions: Location.LocationOptions = {
-        accuracy: Location.Accuracy.High,
-        timeout: 10000,
-      };
-
-      const position = await Location.getCurrentPositionAsync(locationOptions);
-      
-      return {
-        coords: {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy || 0,
-          altitude: position.coords.altitude || undefined,
-          altitudeAccuracy: position.coords.altitudeAccuracy || undefined,
-          heading: position.coords.heading || undefined,
-          speed: position.coords.speed || undefined,
-        },
-        wifiSSID,
-        timestamp: position.timestamp,
-        provider: 'Google Fused Location',
-        source: 'GoogleFused'
-      };
-    } catch (error) {
-      console.error('Google Fused Location failed:', error);
-      throw error;
-    }
-  }
-
-  // Network-based location (WiFi/cell tower positioning)
-  private static async getNetworkBasedLocation(): Promise<LocationData> {
-    try {
-      let wifiSSID: string | null = null;
-      try {
-        const netInfo = await NetInfo.fetch();
-        if (netInfo.type === 'wifi' && netInfo.details && 'ssid' in netInfo.details) {
-          wifiSSID = netInfo.details.ssid;
-        }
-      } catch (error) {
-        console.warn('WiFi SSID detection failed in Network method:', error);
-      }
-
-      // Use lower accuracy setting which often uses network-based location
-      const locationOptions: Location.LocationOptions = {
-        accuracy: Location.Accuracy.Balanced,
-        timeout: 10000,
-      };
-
-      const position = await Location.getCurrentPositionAsync(locationOptions);
-      
-      return {
-        coords: {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy || 0,
-          altitude: position.coords.altitude || undefined,
-          altitudeAccuracy: position.coords.altitudeAccuracy || undefined,
-          heading: position.coords.heading || undefined,
-          speed: position.coords.speed || undefined,
-        },
-        wifiSSID,
-        timestamp: position.timestamp,
-        provider: 'Network Based',
-        source: 'Network'
-      };
-    } catch (error) {
-      console.error('Network-based location failed:', error);
-      throw error;
-    }
-  }
-
-  // Indoor positioning using WiFi fingerprinting (requires backend API)
-  private static async getIndoorPositioningLocation(wifiSSID: string): Promise<LocationData> {
-    try {
-      // This would call your indoor positioning API
-      // For now, we'll simulate this with the existing GPS but mark it as indoor
-      const gpsLocation = await this.getHighAccuracyGPSLocation();
-      
-      return {
-        ...gpsLocation,
-        source: 'IndoorPositioning'
-      };
-      
-      /* 
-      // Actual implementation would look something like this:
-      const response = await fetch(`${INDOOR_POSITIONING_API_URL}/locate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          wifiSSID,
-          timestamp: Date.now(),
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Indoor positioning service unavailable');
-      }
-      
-      const data = await response.json();
-      
-      return {
-        coords: {
-          latitude: data.latitude,
-          longitude: data.longitude,
-          accuracy: data.accuracy || 10, // Indoor positioning typically has 5-15m accuracy
-        },
-        wifiSSID,
-        timestamp: Date.now(),
-        provider: 'Indoor Positioning System',
-        source: 'Indoor'
-      };
-      */
-    } catch (error) {
-      console.error('Indoor positioning failed:', error);
-      throw error;
-    }
-  }
-
-  // Google Maps Geolocation API (requires API key)
-  private static async getGoogleGeolocationAPI(): Promise<LocationData> {
-    try {
-      // Get WiFi access points information
-      // Note: This requires additional permissions and might not work in Expo
-      /* 
-      const wifiData = await getWifiAccessPoints(); // You'd need to implement this
-      
-      const response = await fetch(`https://www.googleapis.com/geolocation/v1/geolocate?key=${GOOGLE_API_KEY}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          considerIp: false,
-          wifiAccessPoints: wifiData
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Google Geolocation API failed');
-      }
-      
-      const data = await response.json();
-      
-      return {
-        coords: {
-          latitude: data.location.lat,
-          longitude: data.location.lng,
-          accuracy: data.accuracy,
-        },
-        wifiSSID: null, // You might extract this from wifiData
-        timestamp: Date.now(),
-        provider: 'Google Geolocation API',
-        source: 'GoogleAPI'
-      };
-      */
-      
-      // For now, we'll fall back to regular GPS
-      return await this.getHighAccuracyGPSLocation();
-    } catch (error) {
-      console.error('Google Geolocation API failed:', error);
+      console.error('Location service error:', error);
       throw error;
     }
   }
@@ -397,12 +159,12 @@ export class LocationService {
     }
   }
 
-  // New method to validate location accuracy for attendance
+  // Validate location accuracy for attendance
   static validateLocationForAttendance(location: LocationData, requiredAccuracy: number = 30): boolean {
     return location.coords.accuracy <= requiredAccuracy;
   }
 
-  // New method to get location with specific accuracy requirements
+  // Get location with specific accuracy requirements
   static async getLocationForAttendance(requiredAccuracy: number = 30, maxAttempts: number = 3): Promise<LocationData> {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
