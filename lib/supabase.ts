@@ -2,8 +2,9 @@ import { createClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
 const supabaseUrl = 'https://ztaavlqakzdlkzacqnlp.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp0YWF2bHFha3pkbGt6YWNxbmxwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTYzNTMzNzEsImV4cCI6MjA3MTkyOTM3MX0.KAZM3BDiqxnU4ObKKH6qWpeAGyHyIW1YnggAWGhy3ns';
+const supabaseAnonKey = 'sb_publishable_idkKklD6w9-AOgSxXqvBzw_JiypjQOz';
 
+        
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
