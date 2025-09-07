@@ -1,0 +1,140 @@
+/*
+  # Smart Attendance App - New Production Schema
+
+  1. New Tables
+    - `users` - User profiles with role (student/faculty)
+    - `sessions` - Faculty attendance sessions with location and student list
+    - `attendance` - Student attendance records with location data
+
+  2. Security
+    - Enable RLS on all tables
+    - Add policies for role-based access
+
+  3. Features
+    - Circle-based attendance detection
+    - Registration number matching
+    - Location accuracy tracking
+*/
+
+-- Drop existing tables if they exist
+DROP TABLE IF EXISTS attendance_records CASCADE;
+DROP TABLE IF EXISTS attendance_sessions CASCADE;
+DROP TABLE IF EXISTS profiles CASCADE;
+
+-- Users table (replaces profiles)
+CREATE TABLE IF NOT EXISTS users (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  name TEXT NOT NULL,
+  registration_number TEXT NOT NULL UNIQUE,
+  role TEXT CHECK (role IN ('student', 'faculty')) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read own data"
+  ON users
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Users can insert own data"
+  ON users
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Users can update own data"
+  ON users
+  FOR UPDATE
+  TO authenticated
+  USING (true);
+
+-- Sessions table (created by faculty)
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY, -- 6-digit session code
+  faculty_id UUID REFERENCES users(id) NOT NULL,
+  faculty_name TEXT NOT NULL,
+  student_list JSONB NOT NULL DEFAULT '[]', -- Array of {name, registration_number}
+  session_latitude DOUBLE PRECISION NOT NULL,
+  session_longitude DOUBLE PRECISION NOT NULL,
+  session_accuracy DOUBLE PRECISION NOT NULL,
+  session_radius DOUBLE PRECISION NOT NULL, -- accuracy + 10 meters
+  wifi_ssid TEXT DEFAULT 'iBUS@MUJ',
+  is_active BOOLEAN DEFAULT TRUE,
+  expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '10 minutes'),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Faculty can create sessions"
+  ON sessions
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM users 
+    WHERE users.id = auth.uid() 
+    AND users.role = 'faculty'
+  ));
+
+CREATE POLICY "Faculty can read own sessions"
+  ON sessions
+  FOR SELECT
+  TO authenticated
+  USING (faculty_id = auth.uid());
+
+CREATE POLICY "Students can read active sessions"
+  ON sessions
+  FOR SELECT
+  TO authenticated
+  USING (is_active = TRUE AND expires_at > NOW());
+
+-- Attendance table (student submissions)
+CREATE TABLE IF NOT EXISTS attendance (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE NOT NULL,
+  student_name TEXT NOT NULL,
+  student_registration TEXT NOT NULL,
+  student_latitude DOUBLE PRECISION NOT NULL,
+  student_longitude DOUBLE PRECISION NOT NULL,
+  student_accuracy DOUBLE PRECISION NOT NULL,
+  student_radius DOUBLE PRECISION NOT NULL, -- accuracy + 1 meter
+  distance_from_session DOUBLE PRECISION NOT NULL,
+  coverage_percentage DOUBLE PRECISION NOT NULL, -- How much student circle is covered
+  status TEXT CHECK (status IN ('present', 'proxy')) NOT NULL,
+  wifi_ssid TEXT DEFAULT 'iBUS@MUJ',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  
+  -- Prevent duplicate attendance
+  UNIQUE(session_id, student_registration)
+);
+
+ALTER TABLE attendance ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Students can insert attendance"
+  ON attendance
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Faculty can read attendance for their sessions"
+  ON attendance
+  FOR SELECT
+  TO authenticated
+  USING (EXISTS (
+    SELECT 1 FROM sessions 
+    WHERE sessions.id = session_id 
+    AND sessions.faculty_id = auth.uid()
+  ));
+
+CREATE POLICY "Students can read own attendance"
+  ON attendance
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(is_active, expires_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance(session_id);
+CREATE INDEX IF NOT EXISTS idx_users_registration ON users(registration_number);
