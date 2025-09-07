@@ -16,6 +16,7 @@ import MapView, { Circle, Marker } from 'react-native-maps';
 import { LocationService } from '@/services/LocationService';
 import { CircleUtils } from '@/utils/CircleUtils';
 import { supabase, User, Session, Attendance } from '@/lib/supabase';
+import LoginModal from '@/components/LoginModal';
 
 interface Student {
   name: string;
@@ -26,6 +27,7 @@ interface Student {
 
 export default function FacultyTab() {
   const [user, setUser] = useState<User | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const [students, setStudents] = useState<Student[]>([]);
   const [sessionCode, setSessionCode] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
@@ -71,8 +73,19 @@ export default function FacultyTab() {
         .select('*')
         .eq('id', authUser.id)
         .single();
-      setUser(data);
+      if (data) {
+        setUser(data);
+      } else {
+        setShowLoginModal(true);
+      }
+    } else {
+      setShowLoginModal(true);
     }
+  };
+
+  const handleLoginSuccess = () => {
+    setShowLoginModal(false);
+    checkUser();
   };
 
   const generateSessionCode = (): string => {
@@ -250,13 +263,29 @@ export default function FacultyTab() {
     }
   };
 
-  if (!user || user.role !== 'faculty') {
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <LoginModal 
+          visible={showLoginModal} 
+          onClose={() => setShowLoginModal(false)}
+          onSuccess={handleLoginSuccess}
+        />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (user.role !== 'faculty') {
     return (
       <View style={styles.container}>
         <View style={styles.errorContainer}>
           <MaterialIcons name="error" size={48} color="#EF4444" />
           <Text style={styles.errorText}>Faculty access required</Text>
-          <Text style={styles.errorSubtext}>Please login as faculty to access this section</Text>
+          <Text style={styles.errorSubtext}>This section is only available for faculty members</Text>
         </View>
       </View>
     );
@@ -264,6 +293,12 @@ export default function FacultyTab() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <LoginModal 
+        visible={showLoginModal} 
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={handleLoginSuccess}
+      />
+      
       <View style={styles.header}>
         <MaterialIcons name="school" size={40} color="#3B82F6" />
         <Text style={styles.title}>Faculty Dashboard</Text>
@@ -416,6 +451,16 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#6B7280',
   },
   errorContainer: {
     flex: 1,
