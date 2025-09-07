@@ -26,14 +26,22 @@ export default function MarkAttendanceTab() {
   }, []);
 
   const checkUser = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !authUser) {
+      return;
+    }
+    
     if (authUser) {
       const { data } = await supabase
         .from('users')
         .select('*')
         .eq('id', authUser.id)
         .single();
-      setUser(data);
+        
+      if (data && data.role === 'student') {
+        setUser(data);
+      }
     }
   };
 

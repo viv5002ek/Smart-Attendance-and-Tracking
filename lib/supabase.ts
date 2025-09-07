@@ -6,15 +6,16 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    autoRefreshToken: Platform.OS !== 'web',
+    autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web',
   },
 });
 
 // Database types
 export interface User {
   id: string;
+  email: string;
   name: string;
   registration_number: string;
   role: 'student' | 'faculty';

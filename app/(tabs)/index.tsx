@@ -66,14 +66,21 @@ export default function FacultyTab() {
   }, [sessionActive, currentSession]);
 
   const checkUser = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !authUser) {
+      setShowLoginModal(true);
+      return;
+    }
+    
     if (authUser) {
       const { data } = await supabase
         .from('users')
         .select('*')
         .eq('id', authUser.id)
         .single();
-      if (data) {
+        
+      if (data && data.role === 'faculty') {
         setUser(data);
       } else {
         setShowLoginModal(true);

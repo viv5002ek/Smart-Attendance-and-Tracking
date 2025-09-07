@@ -17,7 +17,12 @@ export default function ProfileTab() {
   }, []);
 
   const checkUser = async () => {
-    const { data: { user: authUser } } = await supabase.auth.getUser();
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !authUser) {
+      return;
+    }
+    
     if (authUser) {
       const { data } = await supabase
         .from('users')
@@ -52,6 +57,11 @@ export default function ProfileTab() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Personal Information</Text>
         
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Email:</Text>
+          <Text style={styles.infoValue}>{user.email}</Text>
+        </View>
+
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Name:</Text>
           <Text style={styles.infoValue}>{user.name}</Text>

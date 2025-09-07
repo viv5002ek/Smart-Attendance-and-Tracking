@@ -1,6 +1,7 @@
 import * as Location from 'expo-location';
 import { Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
+import { Alert } from 'react-native';
 
 interface LocationData {
   coords: {
@@ -19,7 +20,59 @@ interface LocationData {
 }
 
 export class LocationService {
+  static async checkWiFiConnection(): Promise<boolean> {
+    try {
+      const netInfo = await NetInfo.fetch();
+      if (netInfo.type === 'wifi' && netInfo.details && 'ssid' in netInfo.details) {
+        return netInfo.details.ssid === 'iBUS@MUJ';
+      }
+      return false;
+    } catch (error) {
+      console.error('WiFi check failed:', error);
+      return false;
+    }
+  }
+
+  static async promptWiFiConnection(): Promise<boolean> {
+    const isConnected = await this.checkWiFiConnection();
+    
+    if (!isConnected) {
+      return new Promise((resolve) => {
+        Alert.alert(
+          'WiFi Connection Required',
+          'Please connect to "iBUS@MUJ" WiFi network for accurate attendance marking.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve(false),
+            },
+            {
+              text: 'Continue Anyway',
+              onPress: () => resolve(true),
+            },
+            {
+              text: 'Check Again',
+              onPress: async () => {
+                const recheckResult = await this.checkWiFiConnection();
+                resolve(recheckResult);
+              },
+            },
+          ]
+        );
+      });
+    }
+    
+    return true;
+  }
+
   static async getHighAccuracyLocation(): Promise<LocationData> {
+    // First check WiFi connection
+    const wifiOk = await this.promptWiFiConnection();
+    if (!wifiOk) {
+      throw new Error('WiFi connection required for attendance');
+    }
+
     try {
       // 1. Request location permissions
       let { status } = await Location.getForegroundPermissionsAsync();
